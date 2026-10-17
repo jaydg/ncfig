@@ -183,7 +183,7 @@ int main(int argc, char** argv)
 
     while (running) {
         // Clear canvas and Notcurses plane
-        canvas.clear({' ', 0});
+        canvas.clear({U' ', 0});
         std_plane->erase();
 
         if (circular_mode) {
@@ -241,9 +241,10 @@ int main(int argc, char** argv)
         for (int y = 0; y < canvas.height(); ++y) {
             for (int x = 0; x < canvas.width(); ++x) {
                 const auto& cell = canvas(y, x);
-                if (cell.ch != ' ') {
+
+                if (cell.ch != U' ' && cell.ch != U'\u2800') {
                     std_plane->set_fg_rgb(cell.fg);
-                    std_plane->putc(y, x, cell.ch);
+                    std_plane->putwch(y, x, static_cast<wchar_t>(cell.ch));
                 }
             }
         }

@@ -1,5 +1,7 @@
 .xmake/
-build/
 .vscode/
-fonts/
+build/
 dist/
+/fonts/*
+!/fonts/clara-braille.flf
+!/fonts/sans-braille.flf

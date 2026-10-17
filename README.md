@@ -238,12 +238,13 @@ The core renders into a generic `TextCanvas`, which is an in-memory 2D buffer of
 
 ```cpp
 struct Cell {
-    char ch = ' ';
+    char32_t ch = U' ';
     uint32_t fg = 0xFFFFFF; // 0x00RRGGBB format
 
     uint8_t r() const noexcept;
     uint8_t g() const noexcept;
     uint8_t b() const noexcept;
+    std::string utf8() const;
 };
 ```
 
@@ -284,7 +285,7 @@ void printWithSTC(const TextCanvas& canvas)
     for (int y = 0; y < canvas.height(); ++y) {
         for (int x = 0; x < canvas.width(); ++x) {
             const auto& cell = canvas(y, x);
-            std::cout << stc::rgb_fg(cell.r(), cell.g(), cell.b()) << cell.ch;
+            std::cout << stc::rgb_fg(cell.r(), cell.g(), cell.b()) << cell.utf8();
         }
         std::cout << stc::reset << '\n';
     }
@@ -293,7 +294,7 @@ void printWithSTC(const TextCanvas& canvas)
 
 ### 3. Using with ncurses (`WINDOW*`)
 
-With classic `ncurses`, map the RGB color to an ncurses color pair and write cells using `mvwaddch`:
+With classic `ncurses`, map the RGB color to an ncurses color pair and write cells using `mvwaddstr`:
 
 ```cpp
 #include <ncurses.h>
@@ -306,7 +307,7 @@ void blitToNcurses(WINDOW* win, const TextCanvas& canvas, int start_y = 0, int s
             const auto& cell = canvas(y, x);
             int pair = mapRgbToPair(cell.fg); // Custom mapping to closest init_pair
             wattron(win, COLOR_PAIR(pair));
-            mvwaddch(win, start_y + y, start_x + x, cell.ch);
+            mvwaddstr(win, start_y + y, start_x + x, cell.utf8().c_str());
             wattroff(win, COLOR_PAIR(pair));
         }
     }
@@ -328,7 +329,7 @@ void blitToPlane(ncpp::Plane* plane, const TextCanvas& canvas, int start_y = 0, 
         for (int x = 0; x < canvas.width(); ++x) {
             const auto& cell = canvas(y, x);
             plane->set_fg_rgb(cell.fg);
-            plane->putc(start_y + y, start_x + x, cell.ch);
+            plane->putwch(start_y + y, start_x + x, static_cast<wchar_t>(cell.ch));
         }
     }
 }
@@ -341,7 +342,7 @@ render each frame into a viewport-sized `TextCanvas`:
 
 ```cpp
 TextCanvas canvas(screen_width, screen_height);
-canvas.clear({' ', 0});
+canvas.clear({U' ', 0});
 
 font.renderToViewport(
     canvas,

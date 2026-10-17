@@ -11,9 +11,8 @@ export module nctui.canvas;
 /**
  * @brief Represents a single character cell with 24-bit RGB foreground color.
  */
-export struct Cell
-{
-    char ch = ' ';
+export struct Cell {
+    char32_t ch = U' ';
     uint32_t fg = 0xFFFFFF; // 0x00RRGGBB format
 
     [[nodiscard]] constexpr uint8_t r() const noexcept
@@ -30,6 +29,31 @@ export struct Cell
     {
         return static_cast<uint8_t>(fg & 0xFF);
     }
+
+    [[nodiscard]] std::string utf8() const
+    {
+        std::string out;
+
+        if (ch <= 0x7F) {
+            out.push_back(static_cast<char>(ch));
+        } else if (ch <= 0x7FF) {
+            out.push_back(static_cast<char>(0xC0 | ((ch >> 6) & 0x1F)));
+            out.push_back(static_cast<char>(0x80 | (ch & 0x3F)));
+        } else if (ch <= 0xFFFF) {
+            out.push_back(static_cast<char>(0xE0 | ((ch >> 12) & 0x0F)));
+            out.push_back(static_cast<char>(0x80 | ((ch >> 6) & 0x3F)));
+            out.push_back(static_cast<char>(0x80 | (ch & 0x3F)));
+        } else if (ch <= 0x10FFFF) {
+            out.push_back(static_cast<char>(0xF0 | ((ch >> 18) & 0x07)));
+            out.push_back(static_cast<char>(0x80 | ((ch >> 12) & 0x3F)));
+            out.push_back(static_cast<char>(0x80 | ((ch >> 6) & 0x3F)));
+            out.push_back(static_cast<char>(0x80 | (ch & 0x3F)));
+        } else {
+            out.push_back(' ');
+        }
+
+        return out;
+    }
 };
 
 /**
@@ -44,7 +68,7 @@ export class TextCanvas
 public:
     TextCanvas() = default;
 
-    TextCanvas(int width, int height, Cell fill = {' ', 0xFFFFFF})
+    TextCanvas(int width, int height, Cell fill = {U' ', 0xFFFFFF})
         : width_(std::max(0, width)),
           height_(std::max(0, height)),
           buffer_(width_ * height_, fill)
@@ -66,14 +90,14 @@ public:
         return buffer_.empty();
     }
 
-    void resize(int width, int height, Cell fill = {' ', 0xFFFFFF})
+    void resize(int width, int height, Cell fill = {U' ', 0xFFFFFF})
     {
         width_ = std::max(0, width);
         height_ = std::max(0, height);
         buffer_.assign(width_ * height_, fill);
     }
 
-    void clear(Cell fill = {' ', 0xFFFFFF})
+    void clear(Cell fill = {U' ', 0xFFFFFF})
     {
         std::fill(buffer_.begin(), buffer_.end(), fill);
     }
@@ -83,7 +107,7 @@ public:
         return x >= 0 && x < width_ && y >= 0 && y < height_;
     }
 
-    void set(int y, int x, char ch, uint32_t fg) noexcept
+    void set(int y, int x, char32_t ch, uint32_t fg) noexcept
     {
         if (inBounds(y, x)) {
             buffer_[y * width_ + x] = Cell{ch, fg};
@@ -117,6 +141,7 @@ public:
         if (y >= 0 && y < height_) {
             return &buffer_[y * width_];
         }
+
         return nullptr;
     }
 

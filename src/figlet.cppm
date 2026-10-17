@@ -142,12 +142,50 @@ public:
             }
         }
 
-        char endmark = '\0';
+        char32_t endmark = U'\0';
         bool endmark_set = false;
+        char32_t hb = static_cast<unsigned char>(hardblank);
+
+        auto parseGlyphRow = [&](std::string line) -> std::u32string {
+            if (!line.empty() && line.back() == '\r')
+            {
+                line.pop_back();
+            }
+
+            std::u32string u32line = decodeUtf8(line);
+
+            // Detect the endmark character from the end of the very first line
+            if (!endmark_set && !u32line.empty())
+            {
+                endmark = u32line.back();
+                endmark_set = true;
+            }
+
+            // FIGlet lines end with either 1 endmark, or 2 endmarks on the final glyph line
+            if (!u32line.empty() && u32line.back() == endmark)
+            {
+                u32line.pop_back();
+            }
+
+            if (!u32line.empty() && u32line.back() == endmark)
+            {
+                u32line.pop_back();
+            }
+
+            // Replace custom hardblanks with space characters
+            for (char32_t& ch : u32line)
+            {
+                if (ch == hb) {
+                    ch = U' ';
+                }
+            }
+
+            return u32line;
+        };
 
         // 1. Parse standard printable ASCII characters (characters 32 to 126)
         for (char32_t code = 32; code <= 126; ++code) {
-            std::vector<std::string> glyph_rows;
+            std::vector<std::u32string> glyph_rows;
 
             for (int r = 0; r < height; ++r) {
                 std::string line;
@@ -156,38 +194,76 @@ public:
                     return false;
                 }
 
-                // Detect the endmark character from the end of the very first line
-                if (!endmark_set && !line.empty()) {
-                    endmark = line.back();
-                    endmark_set = true;
-                }
-
-                // FIGlet lines end with either 1 endmark, or 2 endmarks on the final glyph line
-                if (!line.empty() && line.back() == endmark) {
-                    line.pop_back();
-                }
-
-                if (!line.empty() && line.back() == endmark) {
-                    line.pop_back();
-                }
-
-                // Replace custom hardblanks with space characters
-                for (char& ch : line) {
-                    if (ch == hardblank) {
-                        ch = ' ';
-                    }
-                }
-
-                glyph_rows.push_back(line);
+                glyph_rows.push_back(parseGlyphRow(std::move(line)));
             }
 
             glyphs[code] = std::move(glyph_rows);
         }
 
-        // 2. Parse any extra/extended Unicode characters present in the font file
+        // 2. Check for the 7 standard un-tagged German characters (Ä, Ö, Ü, ä, ö, ü, ß)
+        // or code-tagged extended characters
+        std::string pending_code_line;
+        std::string first_post_ascii;
+
+        while (std::getline(file, first_post_ascii)) {
+            if (!first_post_ascii.empty() && first_post_ascii.back() == '\r') {
+                first_post_ascii.pop_back();
+            }
+
+            if (!first_post_ascii.empty()) {
+                break;
+            }
+        }
+
+        if (!first_post_ascii.empty()) {
+            std::u32string u32first = decodeUtf8(first_post_ascii);
+
+            if (endmark_set && u32first.back() == endmark) {
+                constexpr char32_t deutsch_codes[7] = {196, 214, 220, 228, 246, 252, 223};
+
+                for (int d = 0; d < 7; ++d) {
+                    std::vector<std::u32string> glyph_rows;
+                    bool ok = true;
+
+                    for (int r = 0; r < height; ++r) {
+                        std::string line;
+
+                        if (d == 0 && r == 0) {
+                            line = first_post_ascii;
+                        } else if (!std::getline(file, line)) {
+                            ok = false;
+                            break;
+                        }
+
+                        glyph_rows.push_back(parseGlyphRow(std::move(line)));
+                    }
+
+                    if (!ok) {
+                        break;
+                    }
+
+                    glyphs[deutsch_codes[d]] = std::move(glyph_rows);
+                }
+            } else {
+                pending_code_line = first_post_ascii;
+            }
+        }
+
+        // 3. Parse any extra/extended code-tagged Unicode characters present in the font file
         std::string code_line;
 
-        while (std::getline(file, code_line)) {
+        while (true) {
+            if (!pending_code_line.empty()) {
+                code_line = std::move(pending_code_line);
+                pending_code_line.clear();
+            } else if (!std::getline(file, code_line)) {
+                break;
+            }
+
+            if (!code_line.empty() && code_line.back() == '\r') {
+                code_line.pop_back();
+            }
+
             if (code_line.empty()) {
                 continue;
             }
@@ -203,6 +279,16 @@ public:
             char32_t code = 0;
 
             try {
+                // Negative code tags are not standard Unicode codepoints; skip their glyph lines
+                if (code_str[0] == '-') {
+                    for (int r = 0; r < height; ++r) {
+                        std::string dummy;
+                        std::getline(file, dummy);
+                    }
+
+                    continue;
+                }
+
                 // Handle hex (0x), octal (0), and base-10 indices
                 if (code_str.size() > 2 && code_str[0] == '0' && (code_str[1] == 'x' || code_str[1] == 'X')) {
                     code = std::stoul(code_str, nullptr, 16);
@@ -215,7 +301,7 @@ public:
                 continue; // Skip invalid blocks or malformed rows
             }
 
-            std::vector<std::string> glyph_rows;
+            std::vector<std::u32string> glyph_rows;
             bool success = true;
 
             for (int r = 0; r < height; ++r) {
@@ -226,21 +312,7 @@ public:
                     break;
                 }
 
-                if (!line.empty() && line.back() == endmark) {
-                    line.pop_back();
-                }
-
-                if (!line.empty() && line.back() == endmark) {
-                    line.pop_back();
-                }
-
-                for (char& ch : line) {
-                    if (ch == hardblank) {
-                        ch = ' ';
-                    }
-                }
-
-                glyph_rows.push_back(line);
+                glyph_rows.push_back(parseGlyphRow(std::move(line)));
             }
 
             if (!success) {
@@ -543,10 +615,10 @@ private:
     int old_layout = 0;
     int comment_lines = 0;
 
-    std::unordered_map<char32_t, std::vector<std::string>> glyphs;
+    std::unordered_map<char32_t, std::vector<std::u32string>> glyphs;
 
     mutable std::string text_cache_key;
-    mutable std::vector<std::string> text_cache_lines;
+    mutable std::vector<std::u32string> text_cache_lines;
     mutable int text_cache_width = 0;
     mutable std::vector<std::pair<int, int>> text_cache_char_ranges;
     mutable std::vector<float> text_cache_col_center;
@@ -578,9 +650,9 @@ private:
     }
 
     // Simple robust custom UTF-8 state decoder helper loop
-    static std::vector<char32_t> decodeUtf8(std::string_view text)
+    static std::u32string decodeUtf8(std::string_view text)
     {
-        std::vector<char32_t> codepoints;
+        std::u32string codepoints;
         size_t i = 0;
 
         while (i < text.size()) {
@@ -650,16 +722,16 @@ private:
         return ranges;
     }
 
-    std::vector<std::string> renderToStrings(const std::string_view text, bool append_nl = false) const
+    std::vector<std::u32string> renderToStrings(const std::string_view text, bool append_nl = false) const
     {
-        std::vector<std::string> ret;
+        std::vector<std::u32string> ret;
 
         // Decode UTF-8 code units to UTF-32 code points for font matching
-        std::vector<char32_t> codepoints = decodeUtf8(text);
+        std::u32string codepoints = decodeUtf8(text);
 
         // Process the string slice line by line
         for (int r = 0; r < height; ++r) {
-            std::string line;
+            std::u32string line;
 
             for (char32_t cp : codepoints) {
                 auto it = glyphs.find(cp);
@@ -677,7 +749,7 @@ private:
             }
 
             if (append_nl) {
-                line += '\n';
+                line += U'\n';
             }
 
             ret.emplace_back(line);
@@ -704,7 +776,7 @@ private:
           const std::vector<std::vector<uint32_t>>&,
           std::size_t
           > prepareGradients(
-              const std::vector<std::string>& lines,
+              const std::vector<std::u32string>& lines,
               Tweening::Gradient& first,
               Tweening::Gradient& second
           ) const

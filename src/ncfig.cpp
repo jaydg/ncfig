@@ -97,15 +97,20 @@ int main(int argc, char** argv)
     // Render to generic TextCanvas, then blit to Notcurses plane
     TextCanvas canvas = font.render(text, first, second);
 
+    int max_x = std::min(canvas.width(), static_cast<int>(std_plane->get_dim_x()));
+
     std_plane->putstr("\n");
+
     for (int y = 0; y < canvas.height(); ++y) {
-        for (int x = 0; x < canvas.width(); ++x) {
+        for (int x = 0; x < max_x; ++x) {
             const auto& cell = canvas(y, x);
             std_plane->set_fg_rgb(cell.fg);
-            std_plane->putc(cell.ch);
+            std_plane->putwch(static_cast<wchar_t>(cell.ch));
         }
+
         std_plane->putstr("\n");
     }
+
     nc.render();
 
     return EXIT_SUCCESS;
