@@ -1,3 +1,5 @@
 .xmake/
 build/
 .vscode/
+fonts/
+dist/

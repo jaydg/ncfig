@@ -3,6 +3,9 @@ module;
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
+#include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -10,6 +13,10 @@ module;
 #include <string_view>
 #include <unordered_map>
 #include <vector>
+
+#ifdef __APPLE__
+#include <mach-o/dyld.h>
+#endif
 
 export module nctui.figlet;
 
@@ -20,6 +27,75 @@ export class FigletFont
 {
 public:
     FigletFont() = default;
+
+    /**
+     * @brief Resolves the font given on the command line to a file.
+     *
+     * @param spec A path to a .flf file, or the name of a font (with or without
+     *             the .flf extension) to look up in the font directories.
+     * @return The path of the font file, or an empty string if none was found.
+     *
+     * The font directories are, in this order: $NCFIG_FONTDIR, fonts/ next to
+     * the executable, and ../share/ncfig/fonts relative to the executable
+     * (where installed releases keep the fonts). A name is looked up there
+     * first and in the working directory last, so a stray file doesn't shadow
+     * a shipped font; use ./name.flf for a file in the working directory.
+     */
+    static std::string findFont(const std::string& spec)
+    {
+        namespace fs = std::filesystem;
+
+        std::vector<fs::path> candidates;
+
+        if (isFontName(spec)) {
+            for (const auto& dir : fontDirs()) {
+                candidates.push_back(dir / spec);
+                candidates.push_back(dir / (spec + ".flf"));
+            }
+        }
+
+        candidates.emplace_back(spec);
+        candidates.emplace_back(spec + ".flf");
+
+        for (const auto& candidate : candidates) {
+            std::error_code ec;
+
+            if (fs::is_regular_file(candidate, ec)) {
+                return candidate.string();
+            }
+        }
+
+        return "";
+    }
+
+    /**
+     * @brief Whether a font specification is a name (no directory part) rather than a path.
+     */
+    static bool isFontName(const std::string& spec)
+    {
+        return std::filesystem::path(spec).filename() == std::filesystem::path(spec);
+    }
+
+    /**
+     * @brief The directories in which findFont() looks for fonts given by name.
+     */
+    static std::vector<std::filesystem::path> fontDirs()
+    {
+        std::vector<std::filesystem::path> dirs;
+
+        if (const char* env = std::getenv("NCFIG_FONTDIR"); env && *env) {
+            dirs.emplace_back(env);
+        }
+
+        auto exe = executableDir();
+
+        if (!exe.empty()) {
+            dirs.push_back(exe / "fonts");
+            dirs.push_back(exe.parent_path() / "share" / "ncfig" / "fonts");
+        }
+
+        return dirs;
+    }
 
     /**
      * @brief Loads and parses a standard FIGlet font (.flf) file.
@@ -432,6 +508,34 @@ public:
     }
 
 private:
+    /**
+     * @brief The directory containing the running executable, or an empty path.
+     */
+    static std::filesystem::path executableDir()
+    {
+        namespace fs = std::filesystem;
+        std::error_code ec;
+#ifdef __APPLE__
+        uint32_t size = 0;
+        _NSGetExecutablePath(nullptr, &size);
+        std::string buffer(size, '\0');
+
+        if (_NSGetExecutablePath(buffer.data(), &size) != 0) {
+            return {};
+        }
+
+        buffer.resize(std::strlen(buffer.c_str()));
+        auto exe = fs::canonical(buffer, ec);
+#else
+        auto exe = fs::read_symlink("/proc/self/exe", ec);
+#endif
+
+        if (ec) {
+            return {};
+        }
+
+        return exe.parent_path();
+    }
     char hardblank = '$';
     int height = 0;
     int baseline = 0;
@@ -441,11 +545,11 @@ private:
 
     std::unordered_map<char32_t, std::vector<std::string>> glyphs;
 
-    mutable std::string                      text_cache_key;
-    mutable std::vector<std::string>         text_cache_lines;
-    mutable int                              text_cache_width = 0;
+    mutable std::string text_cache_key;
+    mutable std::vector<std::string> text_cache_lines;
+    mutable int text_cache_width = 0;
     mutable std::vector<std::pair<int, int>> text_cache_char_ranges;
-    mutable std::vector<float>               text_cache_col_center;
+    mutable std::vector<float> text_cache_col_center;
 
     void updateTextCache(std::string_view text) const
     {
@@ -595,15 +699,15 @@ private:
      * @param second Secondary gradient (used for parallel 2-D gradients).
      * @return Const references to the cached one_d / two_d inside first, plus max_width.
      */
-    std::tuple<
-        const std::vector<uint32_t>&,
-        const std::vector<std::vector<uint32_t>>&,
-        std::size_t
-    > prepareGradients(
-        const std::vector<std::string>& lines,
-        Tweening::Gradient& first,
-        Tweening::Gradient& second
-    ) const
+    std::tuple <
+    const std::vector<uint32_t>&,
+          const std::vector<std::vector<uint32_t>>&,
+          std::size_t
+          > prepareGradients(
+              const std::vector<std::string>& lines,
+              Tweening::Gradient& first,
+              Tweening::Gradient& second
+          ) const
     {
         std::size_t max_width = 0;
 
@@ -618,9 +722,11 @@ private:
             if (first.steps == 0) {
                 first.steps = lines.size();
             }
+
             if (second.steps == 0) {
                 second.steps = max_width;
             }
+
             if (first.two_d.size() != first.steps
                     || first.two_d.empty()
                     || first.two_d[0].size() != second.steps) {
@@ -632,9 +738,11 @@ private:
             if (first.width == 0) {
                 first.width = max_width;
             }
+
             if (first.height == 0) {
                 first.height = lines.size();
             }
+
             if (first.two_d.size() != first.height
                     || first.two_d.empty()
                     || first.two_d[0].size() != first.width) {
@@ -647,6 +755,7 @@ private:
             if (first.steps == 0) {
                 first.steps = lines.size();
             }
+
             if (first.one_d.size() != first.steps) {
                 first.one_d = Tweening::Linear(first);
                 first.two_d.clear();
@@ -657,6 +766,7 @@ private:
             if (first.steps == 0) {
                 first.steps = max_width;
             }
+
             if (first.one_d.size() != first.steps) {
                 first.one_d = Tweening::Linear(first);
                 first.two_d.clear();

@@ -1,0 +1,138 @@
+# Builds static release binaries for Linux (musl, via Alpine) and macOS, and
+# on a version tag (v1.2.3) publishes them as a GitHub Release. The scripts
+# in scripts/ (launch.sh, install.sh) and the Homebrew formula fetch these
+# release assets. Pushes and pull requests only run the build jobs.
+#
+# Optional: with a HOMEBREW_TAP_TOKEN secret (a token with write access to the
+# tap repository, see "Releasing" in the README), the formula in the tap is
+# updated after the release.
+
+name: Release
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-linux:
+    name: ${{ matrix.arch }}-linux
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-24.04
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v7
+
+      # Alpine gives static libraries for everything and a musl libc, hence a
+      # fully static binary. It runs via `docker run` rather than as the job's
+      # container because GitHub's JavaScript actions don't run in Alpine
+      # containers on arm64 runners. XMAKE_ROOT: xmake refuses root otherwise.
+      - name: Build and package in Alpine
+        run: |
+          docker run --rm -v "$PWD:/src" -w /src -e XMAKE_ROOT=y alpine:edge sh -euc '
+            apk add --no-cache bash git tar curl file 7zip pkgconf musl-dev linux-headers \
+              clang clang-extra-tools gcc lld binutils xmake \
+              notcurses-dev notcurses-static libunistring-dev libunistring-static \
+              libdeflate-dev libdeflate-static ncurses-dev ncurses-static zlib-static
+            git config --global --add safe.directory /src
+            scripts/build-release.sh'
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ncfig-${{ matrix.arch }}-linux
+          path: dist/ncfig-*.tar.gz
+          if-no-files-found: error
+
+  build-macos:
+    name: ${{ matrix.arch }}-macos
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: macos-15-intel
+          - arch: aarch64
+            runner: macos-15
+    steps:
+      - name: Install dependencies
+        run: |
+          brew install xmake llvm notcurses libunistring libdeflate ncurses
+          echo "PKG_CONFIG_PATH=$(brew --prefix ncurses)/lib/pkgconfig:$(brew --prefix libdeflate)/lib/pkgconfig" >> "$GITHUB_ENV"
+
+      - uses: actions/checkout@v7
+
+      - name: Build and package
+        run: scripts/build-release.sh
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ncfig-${{ matrix.arch }}-macos
+          path: dist/ncfig-*.tar.gz
+          if-no-files-found: error
+
+  release:
+    if: github.ref_type == 'tag'
+    needs: [build-linux, build-macos]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Checksums
+        run: cd dist && sha256sum ncfig-*.tar.gz > SHA256SUMS && cat SHA256SUMS
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # re-runs update the assets of an existing release
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" dist/* \
+              --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --generate-notes
+          fi
+
+  homebrew:
+    if: github.ref_type == 'tag'
+    needs: release
+    runs-on: ubuntu-24.04
+    env:
+      TAP_REPO: ${{ github.repository_owner }}/homebrew-tap
+      GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+    steps:
+      - name: Skip without HOMEBREW_TAP_TOKEN
+        if: env.GH_TOKEN == ''
+        run: echo "HOMEBREW_TAP_TOKEN is not set; not updating $TAP_REPO"
+
+      - uses: actions/checkout@v7
+        if: env.GH_TOKEN != ''
+
+      - name: Update formula in the tap
+        if: env.GH_TOKEN != ''
+        run: |
+          gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --pattern SHA256SUMS --dir dist
+          gh auth setup-git
+          git clone "https://github.com/${TAP_REPO}.git" tap
+          mkdir -p tap/Formula
+          scripts/homebrew-formula.sh "$GITHUB_REF_NAME" dist/SHA256SUMS > tap/Formula/ncfig.rb
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/ncfig.rb
+          git commit -m "ncfig $GITHUB_REF_NAME" || echo "formula unchanged"
+          git push

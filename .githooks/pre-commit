@@ -1,8 +1,35 @@
 #!/bin/bash -e
+#
+# Formats the staged C++ sources with astyle (settings in .astylerc) and
+# re-stages them, so that every commit is formatted. Enable the hooks once per
+# clone with
+#
+#   git config --local include.path ../.gitconfig
+#
+# astyle comes from your package manager: brew install astyle,
+# sudo apt install astyle, sudo dnf install astyle, ...
 
-# Find modified C++ source files, exit if none found
-FILES=`git diff --cached --name-only --diff-filter=ACMR | grep -E "\.(cpp|cppm)$"`|| exit 0
+# the staged C++ source files; nothing to do without any
+FILES=()
+while IFS= read -r -d '' FILE; do
+    case "$FILE" in
+        *.cpp|*.cppm) FILES+=("$FILE") ;;
+    esac
+done < <(git diff --cached --name-only -z --diff-filter=ACMR)
+[ ${#FILES[@]} -gt 0 ] || exit 0
 
-for FILE in $FILES; do
-	/usr/bin/astyle --project $FILE
+if ! command -v astyle >/dev/null; then
+    echo "pre-commit: astyle is not installed (brew install astyle / sudo apt install astyle)." >&2
+    echo "pre-commit: install it, or commit with --no-verify to skip formatting." >&2
+    exit 1
+fi
+
+for FILE in "${FILES[@]}"; do
+    # re-adding the formatted file would also stage changes left out on purpose
+    if ! git diff --quiet -- "$FILE"; then
+        echo "pre-commit: $FILE has unstaged changes; stage or stash them first." >&2
+        exit 1
+    fi
+    astyle --project "$FILE"
+    git add "$FILE"
 done
