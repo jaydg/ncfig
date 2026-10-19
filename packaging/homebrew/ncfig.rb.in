@@ -37,6 +37,7 @@ class Ncfig < Formula
 
   test do
     assert_match "Usage: ncfig", shell_output("#{bin}/ncfig --help")
+    assert_match "ncfig #{version}", shell_output("#{bin}/ncfig --version")
     assert_predicate pkgshare/"fonts/banner.flf", :exist?
   end
 end

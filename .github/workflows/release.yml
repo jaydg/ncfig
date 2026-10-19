@@ -32,7 +32,10 @@ jobs:
           - arch: aarch64
             runner: ubuntu-24.04-arm
     steps:
+      # the full history with tags, for the version from `git describe`
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       # Alpine gives static libraries for everything and a musl libc, hence a
       # fully static binary. It runs via `docker run` rather than as the job's
@@ -71,7 +74,10 @@ jobs:
           brew install xmake llvm notcurses libunistring libdeflate ncurses
           echo "PKG_CONFIG_PATH=$(brew --prefix ncurses)/lib/pkgconfig:$(brew --prefix libdeflate)/lib/pkgconfig" >> "$GITHUB_ENV"
 
+      # the full history with tags, for the version from `git describe`
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - name: Build and package
         run: scripts/build-release.sh

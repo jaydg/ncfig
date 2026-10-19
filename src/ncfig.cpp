@@ -5,6 +5,11 @@
 #include <string>
 #include <string_view>
 
+// set by the version rule in xmake.lua
+#ifndef NCFIG_VERSION
+#define NCFIG_VERSION "unknown"
+#endif
+
 using namespace std::string_view_literals;
 
 import nctui.cmdline;
@@ -19,6 +24,7 @@ auto help = "Usage: ncfig -f <font> [-v <gradient>] [-r <gradient>] [-h <gradien
             "  -h <gradient>  : Specify the horizontal color gradient\n"
             "  -r <gradient>  : Specify the radial color gradient\n"
             "  text           : The text to render\n"
+            "  --version      : Print the version and exit\n"
             "\n"
             "Gradients are specified as pairs of hexadecimal colors, e.g.\n"
             "0xff0000:0x00ff00 for a red-to-green gradient. They can optionally have a center\n"
@@ -33,6 +39,12 @@ int main(int argc, char** argv)
 
     if (opts.cmdOptionExists("-?") || opts.cmdOptionExists("--help")) {
         std::cout << help;
+
+        return EXIT_SUCCESS;
+    }
+
+    if (opts.cmdOptionExists("--version")) {
+        std::cout << "ncfig " NCFIG_VERSION "\n";
 
         return EXIT_SUCCESS;
     }

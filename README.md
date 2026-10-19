@@ -47,6 +47,7 @@ ncfig -f <font> [-v <gradient>] [-h <gradient>] [-r <gradient>] [text]
 | `-h <gradient>` | Horizontal color gradient |
 | `-r <gradient>` | Radial color gradient |
 | `text` | Text to render (default: `HELLO NOTCURSES!`) |
+| `--version` | Print the version and exit |
 
 **Example:**
 
@@ -77,6 +78,7 @@ ncmarquee -f <font> [-v <gradient>] [-h <gradient>] [-r <gradient>] [-s <ms>] [-
 | `-c` | Circular mode (text is directly followed by itself) |
 | `-w <amplitude>` | Sine wave vertical movement with the given amplitude in rows |
 | `text` | Text to render (default: `HELLO NOTCURSES!`) |
+| `--version` | Print the version and exit |
 
 **Examples:**
 
@@ -188,6 +190,8 @@ sudo xmake install -o /usr/local
 ```
 
 `xmake uninstall --installdir=<dir>` with the same directory removes them again.
+
+The tools report the version of the checkout with `--version`, taken from `git describe`: `1.1.0` on a tag, `1.1.0-2-79954c1` two commits after it, with `-dirty` for uncommitted changes, and `unknown` outside a git checkout. Builds from a source archive can set it with `xmake f --ncfig_version=1.1.0`.
 
 ### Get the fonts for the examples:
 
