@@ -87,9 +87,8 @@ int main(int argc, char** argv)
         return EXIT_FAILURE;
     }
 
-    notcurses_options options{
-        .flags = NCOPTION_SUPPRESS_BANNERS | NCOPTION_CLI_MODE
-    };
+    notcurses_options options{};
+    options.flags = NCOPTION_SUPPRESS_BANNERS | NCOPTION_CLI_MODE;
 
     auto nc = ncpp::NotCurses(options);
     ncpp::Plane* std_plane = nc.get_stdplane();

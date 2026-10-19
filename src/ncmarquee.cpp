@@ -143,9 +143,8 @@ int main(int argc, char** argv)
     }
 
     // Initialize NotCurses in full-screen mode (not CLI mode)
-    notcurses_options nc_opts{
-        .flags = NCOPTION_SUPPRESS_BANNERS
-    };
+    notcurses_options nc_opts{};
+    nc_opts.flags = NCOPTION_SUPPRESS_BANNERS;
     auto nc = ncpp::NotCurses(nc_opts);
     ncpp::Plane* std_plane = nc.get_stdplane();
 
@@ -192,7 +191,6 @@ int main(int argc, char** argv)
             font.renderToViewport(
                 canvas,
                 y_pos,
-                x_pos,
                 text,
                 first,
                 second,
@@ -208,7 +206,6 @@ int main(int argc, char** argv)
                 font.renderToViewport(
                     canvas,
                     y_pos,
-                    offset,
                     text,
                     first,
                     second,
@@ -225,7 +222,6 @@ int main(int argc, char** argv)
             font.renderToViewport(
                 canvas,
                 y_pos,
-                x_pos,
                 text,
                 first,
                 second,

@@ -356,24 +356,24 @@ public:
             max_width
         ] = prepareGradients(lines, first, second);
 
-        for (int i = 0; i < lines.size(); ++i) {
+        for (int i = 0; i < (int)lines.size(); ++i) {
             if (!two_d.empty()) {
                 // 2d tweening
                 // print by character
-                for (int j = 0; j < lines[i].size(); ++j) {
+                for (int j = 0; j < (int)lines[i].size(); ++j) {
                     canvas.set(y + i, x + j, lines[i][j], two_d[i][j]);
                 }
             } else if (!one_d.empty() && first.orientation == Tweening::Orientation::Vertical) {
-                for (int j = 0; j < lines[i].size(); ++j) {
+                for (int j = 0; j < (int)lines[i].size(); ++j) {
                     canvas.set(y + i, x + j, lines[i][j], one_d[i]);
                 }
             } else if (!one_d.empty() && first.orientation == Tweening::Orientation::Horizontal) {
                 // print by character
-                for (int j = 0; j < lines[i].size(); ++j) {
+                for (int j = 0; j < (int)lines[i].size(); ++j) {
                     canvas.set(y + i, x + j, lines[i][j], one_d[j]);
                 }
             } else {
-                for (int j = 0; j < lines[i].size(); ++j) {
+                for (int j = 0; j < (int)lines[i].size(); ++j) {
                     canvas.set(y + i, x + j, lines[i][j], 0xFFFFFF);
                 }
             }
@@ -415,7 +415,6 @@ public:
      *
      * @param canvas The target TextCanvas.
      * @param y Top-left Y row coordinate.
-     * @param x Top-left X column coordinate (starting position on canvas).
      * @param text String view containing UTF-8 input text.
      * @param first First gradient for the text.
      * @param second Second gradient for the text.
@@ -428,7 +427,6 @@ public:
     void renderToViewport(
         TextCanvas& canvas,
         int y,
-        int x,
         std::string_view text,
         Tweening::Gradient& first,
         Tweening::Gradient& second,
@@ -736,13 +734,13 @@ private:
             for (char32_t cp : codepoints) {
                 auto it = glyphs.find(cp);
 
-                if (it != glyphs.end() && r < it->second.size()) {
+                if (it != glyphs.end() && r < (int)it->second.size()) {
                     line += it->second[r];
                 } else {
                     // Fallback to a space glyph if a character is missing
                     auto space_it = glyphs.find(U' ');
 
-                    if (space_it != glyphs.end() && r < space_it->second.size()) {
+                    if (space_it != glyphs.end() && r < (int)space_it->second.size()) {
                         line += space_it->second[r];
                     }
                 }

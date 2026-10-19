@@ -1,4 +1,5 @@
 add_rules("mode.debug", "mode.release")
+set_warnings("all", "extra")
 
 -- System dependencies. They are optional at the package level so that a
 -- missing one doesn't abort with xmake's terse "must be installed!", but the
